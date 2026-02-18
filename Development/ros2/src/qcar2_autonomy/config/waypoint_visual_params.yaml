@@ -1,0 +1,4 @@
+# Parámetros para waypoint_visual_launch (solo waypoints desde RViz)
+waypoint_follower_controller:
+  ros__parameters:
+    use_rviz_only: true

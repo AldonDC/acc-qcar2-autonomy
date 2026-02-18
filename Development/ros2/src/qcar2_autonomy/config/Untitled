@@ -1,0 +1,1 @@
+   ros2 run qcar2_autonomy waypoint_map_gui --ros-args -p circuit_rotation_deg:=90

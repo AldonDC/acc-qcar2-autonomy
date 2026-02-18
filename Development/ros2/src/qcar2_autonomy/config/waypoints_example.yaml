@@ -1,0 +1,18 @@
+# Waypoints en el frame "map" (x, y) en metros.
+# Edita estos puntos según el mapa que ves en RViz (Cartographer).
+# Puedes obtener coordenadas haciendo clic con "Publish Point" en RViz y mirando
+# la posición en la terminal del waypoint_visual_node, o estimando desde el mapa.
+#
+# Formato: lista de [x, y]. Ejemplo: un cuadrado.
+waypoints:
+  - [0.0, 0.0]
+  - [2.0, 0.0]
+  - [2.0, 2.0]
+  - [0.0, 2.0]
+  - [0.0, 0.0]
+
+# Ejemplo alternativo (ruta recta):
+# waypoints:
+#   - [0.0, 0.0]
+#   - [3.0, 0.0]
+#   - [3.0, 1.0]

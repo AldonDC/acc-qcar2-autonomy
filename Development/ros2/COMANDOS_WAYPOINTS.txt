@@ -1,0 +1,131 @@
+================================================================================
+        SISTEMA DE NAVEGACIÓN PRO: "DRIVE & RECORD" (PASO A PASO)
+================================================================================
+
+Este sistema te permite grabar tus propias rutas conduciendo y luego 
+reproducirlas de forma autónoma con precisión profesional.
+
+REQUISITO PREVIO (En tu PC / Host):
+  xhost +local:
+
+================================================================================
+        FASE 1: GRABAR UNA RUTA (🎥 RECORDING)
+================================================================================
+
+Sigue este orden de terminales (ejecutados desde el host en la raíz del proyecto):
+
+--- TERMINAL 1: Lanzar QLabs ---
+./run_t1.sh
+
+--- TERMINAL 2: Lanzar Cartographer (SLAM) ---
+./run_t2.sh
+
+--- TERMINAL 3: Nodo Grabador ---
+# Entrar al contenedor
+./isaac_ros_common/scripts/run_dev.sh ./Development -- bash
+cd /workspaces/isaac_ros-dev/ros2 && source install/setup.bash
+
+# Grabar con un nombre personalizado
+./record.sh vuelta_pro_3
+
+--- TERMINAL 4: Control con teclado ---
+# NOTA: Si sale "Package not found", ejecuta colcon build primero.
+./isaac_ros_common/scripts/run_dev.sh ./Development -- bash
+
+# DENTRO DEL CONTENEDOR:
+cd /workspaces/isaac_ros-dev/ros2
+colcon build --packages-select qcar2_autonomy   # ← Asegura que ROS encuentre el paquete
+source install/setup.bash                       # ← "Activa" el paquete en esta terminal
+ros2 run qcar2_autonomy simple_teleop_keyboard
+
+--------------------------------------------------------------------------------
+FINALIZAR GRABACIÓN: 
+  Cuando termines la vuelta, ve a la TERMINAL 3 y pulsa Ctrl+C.
+  La ruta se guardará en: routes/vuelta_pro_1.json
+--------------------------------------------------------------------------------
+
+================================================================================
+        FASE 2: REPRODUCIR RUTA (🏎️ NAVIGATION)
+================================================================================
+
+Si ya tienes T1 y T2 corriendo de la fase anterior, solo necesitas la T3.
+
+--- TERMINAL 3: Navegación Autónoma ---
+# Entrar al contenedor (si no estás dentro)
+./isaac_ros_common/scripts/run_dev.sh ./Development -- bash
+cd /workspaces/isaac_ros-dev/ros2
+
+# Compilar por si hubo cambios y activar ROS
+colcon build --packages-select qcar2_autonomy && source install/setup.bash
+
+# Opción A: Reproducción Estándar
+./navigate.sh routes/vuelta_pro_3.json
+
+# Opción B: Con "Skip" (curvas más suaves, usa 1 de cada 5 puntos)
+./navigate.sh routes/vuelta_pro_1.json 5
+
+# Opción C: Loop Infinito (dar vueltas sin parar)
+./navigate.sh routes/vuelta_pro_1.json 1 true
+
+================================================================================
+        MODO HÍBRIDO: CARGAR RUTA + EDITAR EN RVIZ
+================================================================================
+
+Este modo carga una ruta grabada en el editor de RViz para que puedas verla,
+añadirle más puntos con "Publish Point" y luego enviarla al coche.
+
+--- Terminal 3: Lanzar Editor cargando tu ruta ---
+# 1. (DENTRO DEL CONTENEDOR) Compilar con dependencias de interfaces
+cd /workspaces/isaac_ros-dev/ros2
+colcon build --packages-up-to qcar2_autonomy && source install/setup.bash
+
+# 2. Lanzar el editor (puedes usar el JSON simplificado o el completo)
+ros2 launch qcar2_autonomy waypoint_rviz_launch.py \
+  load_file:=/workspaces/isaac_ros-dev/ros2/routes/vuelta1_waypoints.json
+
+--- En RViz ---
+  1. Verás los puntos de la grabación aparecer automáticamente (AMARILLOS).
+  2. Usa la herramienta "Publish Point" (arriba en RViz) para añadir MÁS puntos 
+     donde quieras extender o ajustar la ruta.
+  3. Para enviar todo al coche y que empiece a moverse:
+     ros2 service call /send_path std_srvs/srv/Empty
+
+================================================================================
+        MODO CALCA: USAR GRABACIÓN COMO GUÍA (TRACE MODE)
+================================================================================
+
+Este es el modo más PRO: ves tu grabación en VERDE (como un fantasma) y pones 
+tus waypoints AMARILLOS encima calzando la ruta perfecta.
+
+--- Terminal 3: Lanzar con Guía de Referencia ---
+ros2 launch qcar2_autonomy waypoint_rviz_launch.py \
+  reference_file:=/workspaces/isaac_ros-dev/ros2/routes/vuelta_pro_1.json
+
+--- En RViz ---
+  1. Verás la estela de tu grabación en VERDE traslúcido.
+  2. Pon tus puntos AMARILLOS usando "Publish Point" siguiendo la estela verde.
+  3. Manda al coche: ros2 service call /send_path std_srvs/srv/Empty
+  4. 🏁 ¡EL COCHE SE PARARÁ SOLO AL LLEGAR AL ÚLTIMO PUNTO AMARILLO!
+
+================================================================================
+        DUDAS Y TRUCOS
+================================================================================
+
+1. ¿Qué se ve en RViz?
+   - Fondo oscuro con rejilla sutil (sin imagen de pista).
+   - Guía de referencia: LÍNEA VERDE neón con esferas verdes + flechas de dirección.
+   - Waypoints activos: ESFERAS ÁMBAR con línea amarilla + flechas de dirección.
+   - Marcador de inicio: CILINDRO AZUL en el primer punto.
+   - Marcador de meta: CILINDRO ROJO en el último punto.
+
+2. ¿Cómo borrar todo y empezar de cero?
+   - Ctrl+C en todas las terminales.
+   - Si quieres borrar los puntos grabados en el grabador sin cerrar: 
+     ros2 service call /clear_waypoints std_srvs/srv/Empty
+
+3. ¿Dónde están mis archivos de ruta?
+   - En la carpeta: routes/ (dentro de ros2/)
+
+4. Recompilar (Obligatorio tras cambiar código .py):
+   # Usamos --packages-up-to para compilar también las interfaces necesarias
+   colcon build --packages-up-to qcar2_autonomy && source install/setup.bash

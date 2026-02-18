@@ -1,0 +1,164 @@
+# RViz config para Drive & Record Navigation
+# Muestra: Mapa de Cartographer + Ruta grabada (línea + esferas + flechas) + QCar (flecha amarilla) + LiDAR
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Selection
+    Name: Selection
+  - Class: rviz_common/Tool Properties
+    Name: Tool Properties
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Alpha: 0.3
+      Cell Size: 1
+      Class: rviz_default_plugins/Grid
+      Color: 100; 100; 100
+      Enabled: true
+      Name: Grid
+      Reference Frame: <Fixed Frame>
+      Value: true
+    # --- Mapa de Cartographer (el mapa REAL, perfectamente alineado con TF) ---
+    - Alpha: 0.7
+      Class: rviz_default_plugins/Map
+      Color Scheme: map
+      Draw Behind: true
+      Enabled: true
+      Name: CartographerMap
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History: Keep Last
+        Reliability: Reliable
+        Value: /map
+      Update Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History: Keep Last
+        Reliability: Reliable
+        Value: /map_updates
+      Use Timestamp: false
+      Value: true
+    # --- LiDAR ---
+    - Alpha: 1
+      Class: rviz_default_plugins/LaserScan
+      Color: 0; 255; 200
+      Color Transformer: FlatColor
+      Enabled: true
+      Name: LaserScan
+      Size (Pixels): 3
+      Size (m): 0.03
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History: Keep Last
+        Reliability: Best Effort
+        Value: /scan
+      Value: true
+    # --- TF Frames ---
+    - Class: rviz_default_plugins/TF
+      Enabled: false
+      Frame Timeout: 15
+      Frames:
+        All Enabled: true
+      Marker Scale: 0.3
+      Name: TF
+      Show Arrows: true
+      Show Axes: true
+      Show Names: false
+      Tree: {}
+      Update Interval: 0
+      Value: false
+    # --- QCar Pose Marker (flecha amarilla + esfera azul) ---
+    - Alpha: 1
+      Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: QCarPose
+      Namespaces: {}
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History: Keep Last
+        Reliability: Reliable
+        Value: /qcar_pose_marker
+      Value: true
+    # --- Route Markers (línea + esferas + flechas de la ruta grabada) ---
+    - Alpha: 1
+      Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: RouteMarkers
+      Namespaces: {}
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History: Keep Last
+        Reliability: Reliable
+        Value: /route_markers
+      Value: true
+    # --- Path del Pure Pursuit ---
+    - Alpha: 0.8
+      Class: rviz_default_plugins/Path
+      Color: 50; 255; 50
+      Enabled: true
+      Head Diameter: 0.05
+      Length: 0.15
+      Line Style: Lines
+      Line Width: 0.04
+      Name: WaypointsPath
+      Offset: {X: 0, Y: 0, Z: 0}
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.03
+      Shaft Diameter: 0.03
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 5
+        History: Keep Last
+        Reliability: Reliable
+        Value: /waypoints_path
+      Value: true
+  Enabled: true
+  Global Options:
+    Background Color: 30; 30; 35
+    Fixed Frame: map
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/FocusCamera
+    - Class: rviz_default_plugins/Measure
+    - Class: rviz_default_plugins/SetInitialPose
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History: Keep Last
+        Reliability: Reliable
+        Value: /initialpose
+    - Class: rviz_default_plugins/SetGoal
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History: Keep Last
+        Reliability: Reliable
+        Value: /goal_pose
+  Value: true
+  Views:
+    Current:
+      Class: rviz_default_plugins/TopDownOrtho
+      Enable Stereo Rendering: {Value: false}
+      Name: Current View
+      Near Clip Distance: 0.01
+      Scale: 80
+      Target Frame: <Fixed Frame>
+      Value: TopDownOrtho (rviz_default_plugins)
+      X: 0
+      Y: 0
+    Saved: ~
