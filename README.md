@@ -21,6 +21,7 @@ Sistema de navegación autónoma para **Quanser QCar 2** en **Quanser Interactiv
 - [Dudas y trucos](#-dudas-y-trucos)
 - [Próximos pasos: Visión y homografía](#-próximos-pasos-visión-y-homografía)
 - [Estructura del repositorio](#-estructura-del-repositorio)
+- [Contribuir](#-contribuir)
 - [Referencias](#-referencias)
 - [Licencia](#-licencia)
 
@@ -236,6 +237,32 @@ ACC_Development/
 │           └── qcar2_interfaces/
 └── ...
 ```
+
+---
+
+## Contribuir
+
+Si quieres proponer cambios o contribuir al proyecto, hazlo mediante **Pull Request (PR)** para mantener un historial claro y revisar el código antes de integrarlo.
+
+### Cómo contribuir
+
+1. **Fork** del repositorio y clona tu copia en local.
+2. Crea una **rama** para tu trabajo (p. ej. `feature/nombre-funcionalidad` o `fix/descripcion`).
+3. Realiza tus **cambios** y **commits** con mensajes descriptivos.
+4. Abre un **Pull Request** contra la rama `main` del repositorio original.
+
+### Qué incluir en el PR
+
+Para que la revisión sea ágil y el proyecto se mantenga ordenado, en la descripción del PR indica:
+
+| Campo | Qué poner |
+|-------|-----------|
+| **Resumen** | Qué problema resuelves o qué funcionalidad añades. |
+| **Cambios realizados** | Lista de los cambios concretos (archivos o comportamientos). |
+| **Secciones/áreas modificadas** | Qué partes del proyecto tocas: documentación (README, COMANDOS_WAYPOINTS), paquetes ROS 2 (qcar2_autonomy, qcar2_nodes), scripts, launch, config RViz, etc. |
+| **Motivo** | Por qué se hace el cambio (bug, mejora, nueva feature). |
+
+Los maintainers revisarán el PR y podrán pedir ajustes. Una vez aprobado, se hará merge a `main` y tus commits quedarán integrados en el proyecto.
 
 ---
 
