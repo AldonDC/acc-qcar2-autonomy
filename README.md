@@ -244,12 +244,17 @@ ACC_Development/
 
 Si quieres proponer cambios o contribuir al proyecto, hazlo mediante **Pull Request (PR)** para mantener un historial claro y revisar el código antes de integrarlo.
 
+### Revisar issues
+
+Antes de meter código, revisa los **Issues** del repo: qué está abierto, qué le toca a cada uno (documentación, autonomía, RViz, visión, etc.) y si hay alguno asignado o que quieras tomar. Si vas a trabajar en **cosas distintas**, usa **una rama por issue o por tema** (p. ej. `fix/issue-5-rviz` o `feature/issue-12-homografia`), haz ahí tus commits y, cuando termines ese issue, abre un PR con todo lo que hiciste para ese tema. Así se revisa por bloques y luego se hace merge a `main`.
+
 ### Cómo contribuir
 
 1. **Fork** del repositorio y clona tu copia en local.
-2. Crea una **rama** para tu trabajo (p. ej. `feature/nombre-funcionalidad` o `fix/descripcion`).
-3. Realiza tus **cambios** y **commits** con mensajes descriptivos.
-4. Abre un **Pull Request** contra la rama `main` del repositorio original.
+2. Revisa los **Issues** y decide en qué trabajar; si son tareas diferentes, **crea una rama por cada una** (p. ej. `feature/nombre-funcionalidad` o `fix/issue-N-descripcion`).
+3. Trabaja en esa rama: **commits** con mensajes descriptivos.
+4. Cuando hayas terminado el issue o la funcionalidad, abre un **Pull Request** contra `main` describiendo qué hiciste para ese issue.
+5. Tras la revisión, el maintainer hará **merge a `main`** con tus cambios.
 
 ### Qué incluir en el PR
 
@@ -262,7 +267,7 @@ Para que la revisión sea ágil y el proyecto se mantenga ordenado, en la descri
 | **Secciones/áreas modificadas** | Qué partes del proyecto tocas: documentación (README, COMANDOS_WAYPOINTS), paquetes ROS 2 (qcar2_autonomy, qcar2_nodes), scripts, launch, config RViz, etc. |
 | **Motivo** | Por qué se hace el cambio (bug, mejora, nueva feature). |
 
-Los maintainers revisarán el PR y podrán pedir ajustes. Una vez aprobado, se hará merge a `main` y tus commits quedarán integrados en el proyecto.
+Los maintainers revisarán el PR y podrán pedir ajustes. Una vez aprobado, se hace **merge a `main`** y tus commits quedan integrados. Si el PR cierra un issue, incluye en la descripción *Closes #N* (sustituye N por el número del issue) para que se cierre automáticamente al hacer merge.
 
 ---
 
