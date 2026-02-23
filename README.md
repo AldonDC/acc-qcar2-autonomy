@@ -1,103 +1,124 @@
-# ACC Development — QCar2 Autonomous Driving
+# ACC QCar2 — Autonomous Driving Platform
 
 [![ROS 2 Humble](https://img.shields.io/badge/ROS%202-Humble-blue.svg)](https://docs.ros.org/en/humble/)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-green.svg)](https://www.python.org/)
+[![NVIDIA Isaac ROS](https://img.shields.io/badge/NVIDIA-Isaac%20ROS-76b900.svg)](https://nvidia-isaac-ros.github.io/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-orange.svg)](LICENSE)
 
-Sistema de navegación autónoma para **Quanser QCar 2** en **Quanser Interactive Labs (QLabs)**: desde teleoperación y SLAM hasta trayectorias planificadas, waypoints en RViz/GUI, control Pure Pursuit/Stanley, grabación y reproducción de rutas.
+Autonomous navigation stack for the **Quanser QCar 2** in **Quanser Interactive Labs (QLabs)**.
+Built for the **ACC Self-Driving Car Competition** — covers SLAM, waypoint following, path planning, real-time camera feeds, and a browser-based control dashboard.
+
+<p align="center">
+  <img src="https://img.shields.io/badge/status-active%20development-brightgreen" alt="Status">
+</p>
 
 ---
 
-## Tabla de contenidos
+## Table of Contents
 
-- [Características](#-características)
-- [Requisitos](#-requisitos)
-- [Comandos paso a paso (Drive & Record)](#-comandos-paso-a-paso-drive--record)
-- [Fase 1: Grabar una ruta](#-fase-1-grabar-una-ruta-recording)
-- [Fase 2: Reproducir ruta](#-fase-2-reproducir-ruta-navigation)
-- [Modo híbrido: Cargar ruta + editar en RViz](#-modo-híbrido-cargar-ruta--editar-en-rviz)
-- [Modo calca: Grabación como guía](#-modo-calca-usar-grabación-como-guía-trace-mode)
-- [Waypoints en RViz (fondo pista)](#-waypoints-en-rviz-fondo-pista)
-- [Dudas y trucos](#-dudas-y-trucos)
-- [Próximos pasos: Visión y homografía](#-próximos-pasos-visión-y-homografía)
-- [Estructura del repositorio](#-estructura-del-repositorio)
-- [Contribuir](#-contribuir)
-- [Referencias](#-referencias)
-- [Licencia](#-licencia)
+- [Features](#-features)
+- [Architecture](#%EF%B8%8F-architecture)
+- [Quick Start](#-quick-start)
+- [Usage Modes](#-usage-modes)
+- [Web Dashboard](#%EF%B8%8F-web-dashboard)
+- [Project Structure](#-project-structure)
+- [Roadmap](#%EF%B8%8F-roadmap)
+- [Contributing](#-contributing)
+- [References](#-references)
+- [License](#-license)
 
 ---
 
-## Características
+## ✨ Features
 
-| Funcionalidad | Descripción |
-|--------------|-------------|
-| **Drive & Record** | Graba rutas conduciendo con teclado y reprodúcelas de forma autónoma. |
-| **Waypoints en RViz** | Define rutas con clics en el mapa (fondo = pista), calibración automática del QCar. |
-| **Waypoints en GUI** | Alternativa con ventana Python e imagen del circuito. |
-| **Pure Pursuit** | Controlador de seguimiento de trayectoria (estilo Smart Mobility / PythonRobotics). |
-| **Stanley** | Controlador lateral tipo Stanley como alternativa. |
-| **SLAM** | Cartographer para mapa y localización (map → base_link). |
-| **Rutas grabadas** | Carga rutas JSON, modo “calca” con guía visual en verde. |
+| Module | Description |
+|--------|-------------|
+| **Pure Pursuit Controller** | Waypoint-following with anti-zigzag tuning (v9), configurable look-ahead, steering rate limiter |
+| **Stanley Controller** | Lateral control alternative for comparison |
+| **Web Dashboard** | Browser-based control center with 4 live camera feeds, click-to-waypoint, telemetry charts |
+| **Matplotlib GUI** | Desktop GUI for waypoint management on the circuit map |
+| **SLAM (Cartographer)** | Real-time 2D mapping and localization via Google Cartographer |
+| **Drive & Record** | Record routes via keyboard teleop, replay them autonomously |
+| **RViz Waypoints** | Interactive waypoint placement in RViz with track background |
+| **QLabs Integration** | Overhead camera, ground-truth pose, multi-scenario launcher |
+| **Camera Pipeline** | CSI fisheye + RGBD color/depth streams, MJPEG over HTTP |
 
 ---
 
-## Requisitos
+## 🏗️ Architecture
 
-- **Sistema:** Linux (Ubuntu 22.04 recomendado)
-- **ROS 2:** Humble
-- **Entorno:** Contenedor de desarrollo (Isaac ROS / Docker)
-- **Simulación:** Quanser Interactive Labs con escenario *ACC Self Driving Car Competition*
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Terminal 1: QLabs Scenario (Quanser Docker)                    │
+│  ./run_t1.sh → Competition Map / Real Scenario                 │
+├─────────────────────────────────────────────────────────────────┤
+│  Terminal 2: Isaac ROS Container                                │
+│  ./run_t2.sh → QCar2 + Cartographer (SLAM)                     │
+├─────────────────────────────────────────────────────────────────┤
+│  Terminal 3: Autonomy Nodes (inside Isaac ROS)                  │
+│  Pure Pursuit + Web Dashboard + Cameras                         │
+├─────────────────────────────────────────────────────────────────┤
+│  Browser: http://localhost:8085                                 │
+│  Live cameras │ Click waypoints │ Telemetry │ Route control     │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-**Requisito previo en el host (para GUI/RViz):**
+**ROS 2 Node Graph:**
 
-```bash
-xhost +local:
+```
+/qcar2_hardware ──► /scan, /camera/csi_image, /camera/color_image, /camera/depth_image
+/cartographer   ──► /map, TF (map → odom → base_link)
+/qcar_pose_gt   ──► /qcar_pose_gt (ground truth from QLabs)
+/pure_pursuit   ◄── /waypoints_path  ──► /cmd_vel_nav
+/web_dashboard  ◄── all topics       ──► HTTP :8085
 ```
 
 ---
 
-## Comandos paso a paso (Drive & Record)
+## 🚀 Quick Start
 
-Todos los comandos se ejecutan **desde la raíz del proyecto** en el host, salvo los que indican “dentro del contenedor”. Orden recomendado: **Terminal 1 → Terminal 2 → Terminal 3** (y Terminal 4 solo para grabar).
+### Prerequisites
 
----
+- **OS:** Ubuntu 22.04
+- **GPU:** NVIDIA (for Isaac ROS container)
+- **Software:** Docker, NVIDIA Container Toolkit
+- **Simulation:** Quanser Interactive Labs with *ACC Self-Driving Car Competition* scenario
 
-## Fase 1: Grabar una ruta (Recording)
+### Step-by-step
 
-| Terminal | Acción | Comandos |
-|----------|--------|----------|
-| **T1** | Lanzar QLabs | `./run_t1.sh` |
-| **T2** | Lanzar Cartographer (SLAM) | `./run_t2.sh` |
-| **T3** | Entrar al contenedor y grabar | Ver bloque siguiente |
-| **T4** | Control con teclado (teleop) | Ver bloque siguiente |
-
-**Terminal 3 — Nodo grabador (dentro del contenedor):**
+**1. Clone the repository:**
 
 ```bash
-./isaac_ros_common/scripts/run_dev.sh ./Development -- bash
-cd /workspaces/isaac_ros-dev/ros2 && source install/setup.bash
-./record.sh vuelta_pro_3
+git clone https://github.com/AldonDC/acc-qcar2-autonomy.git
+cd acc-qcar2-autonomy
 ```
 
-*(Cambia `vuelta_pro_3` por el nombre que quieras para la ruta.)*
+**2. Open QLabs:**
+- Launch Quanser Interactive Labs
+- Enter *ACC Self Driving Car Competition*
+- Open the scenario/workspace
 
-**Terminal 4 — Teleop (dentro del contenedor):**
+**3. Terminal 1 — Launch QLabs scenario:**
 
 ```bash
-./isaac_ros_common/scripts/run_dev.sh ./Development -- bash
-cd /workspaces/isaac_ros-dev/ros2
-colcon build --packages-select qcar2_autonomy
-source install/setup.bash
-ros2 run qcar2_autonomy simple_teleop_keyboard
+./run_t1.sh
 ```
 
-**Finalizar grabación:** En la **Terminal 3** pulsa **Ctrl+C**. La ruta se guarda en `Development/ros2/routes/vuelta_pro_3.json` (o el nombre que hayas usado).
+Select from the menu:
+| Option | Scenario |
+|--------|----------|
+| 1 | 🗺️ Empty competition map |
+| 2 | 🏁 Full scenario (traffic lights, stop signs, roundabout) |
+| 3 | ⚡ Empty — Interleaved (better FPS) |
+| 4 | 🚀 Full — Interleaved (better FPS) |
 
----
+**4. Terminal 2 — Start QCar + SLAM:**
 
-## Fase 2: Reproducir ruta (Navigation)
+```bash
+./run_t2.sh
+```
 
-Con **T1** y **T2** en marcha, en **Terminal 3** (dentro del contenedor):
+**5. Terminal 3 — Enter the container and start autonomy:**
 
 ```bash
 ./isaac_ros_common/scripts/run_dev.sh ./Development -- bash
@@ -105,182 +126,216 @@ cd /workspaces/isaac_ros-dev/ros2
 colcon build --packages-select qcar2_autonomy && source install/setup.bash
 ```
 
-Luego elige una opción:
+Then choose your mode:
 
-| Opción | Comando | Descripción |
-|--------|---------|-------------|
-| **A** | `./navigate.sh routes/vuelta_pro_3.json` | Reproducción estándar. |
-| **B** | `./navigate.sh routes/vuelta_pro_1.json 5` | Curvas más suaves (usa 1 de cada 5 puntos). |
-| **C** | `./navigate.sh routes/vuelta_pro_1.json 1 true` | Loop infinito (vueltas sin parar). |
+| Mode | Command |
+|------|---------|
+| **Web Dashboard + Pure Pursuit** | `ros2 launch qcar2_autonomy qcar_web_dashboard_launch.py` |
+| **GUI + Pure Pursuit** | `ros2 launch qcar2_autonomy waypoint_full_launch.py` |
+| **Pure Pursuit only** | `ros2 run qcar2_autonomy waypoint_follower_pure_pursuit` |
+| **Web Dashboard only** | `ros2 run qcar2_autonomy qcar_web_dashboard` |
+
+**6. Open browser:** `http://localhost:8085`
 
 ---
 
-## Modo híbrido: Cargar ruta + editar en RViz
+## 📋 Usage Modes
 
-Carga una ruta grabada en RViz, añade o quita puntos con **Publish Point** y envía la ruta al coche.
+### Web Dashboard (Recommended)
 
-**Terminal 3 (dentro del contenedor):**
+Click waypoints on the overhead map, view all cameras, monitor telemetry — all from the browser.
 
 ```bash
-cd /workspaces/isaac_ros-dev/ros2
-colcon build --packages-up-to qcar2_autonomy && source install/setup.bash
-ros2 launch qcar2_autonomy waypoint_rviz_launch.py \
-  load_file:=/workspaces/isaac_ros-dev/ros2/routes/vuelta1_waypoints.json
+# Terminal 3 (inside container):
+ros2 launch qcar2_autonomy qcar_web_dashboard_launch.py
 ```
 
-**En RViz:**
+Then open `http://localhost:8085`.
 
-1. Los puntos de la grabación aparecen en **amarillo**.
-2. Usa **Publish Point** para añadir más puntos o ajustar la ruta.
-3. Envía la ruta al coche:
-   ```bash
-   ros2 service call /send_path std_srvs/srv/Empty
-   ```
+### Drive & Record
 
----
+Record a route by driving with keyboard, then replay it autonomously.
 
-## Modo calca: Usar grabación como guía (Trace Mode)
-
-Ves la grabación en **verde** (guía) y colocas waypoints **amarillos** encima para definir la trayectoria final.
-
-**Terminal 3 (dentro del contenedor):**
+**Record:**
 
 ```bash
-ros2 launch qcar2_autonomy waypoint_rviz_launch.py \
-  reference_file:=/workspaces/isaac_ros-dev/ros2/routes/vuelta_pro_1.json
+# Terminal 3: Teleop keyboard
+ros2 run qcar2_autonomy simple_teleop_keyboard
+
+# Terminal 4: Record route
+./record.sh my_route
+# Press Ctrl+C to stop → saves to routes/my_route.json
 ```
 
-**En RViz:**
-
-1. Estela de la grabación en **verde** traslúcido.
-2. Añade waypoints **amarillos** con **Publish Point** siguiendo la guía.
-3. Envía al coche: `ros2 service call /send_path std_srvs/srv/Empty`
-4. El coche se detiene al llegar al último waypoint.
-
----
-
-## Waypoints en RViz (fondo pista)
-
-Sin cargar ruta previa: fondo = imagen de la pista, waypoints con clics, calibración automática del QCar.
-
-**Terminal 3 (dentro del contenedor):**
+**Replay:**
 
 ```bash
-cd /workspaces/isaac_ros-dev/ros2 && source install/setup.bash
+./navigate.sh routes/my_route.json       # Standard replay
+./navigate.sh routes/my_route.json 5     # Smoother (1 of every 5 points)
+./navigate.sh routes/my_route.json 1 true # Infinite loop
+```
+
+### RViz Waypoints
+
+Interactive waypoints with track background image in RViz.
+
+```bash
 ros2 launch qcar2_autonomy waypoint_rviz_launch.py
 ```
 
-- **Calibración:** Un clic con **Publish Point** donde está el QCar en QLabs; se calibra solo.
-- **Añadir waypoints:** Más clics en el mapa.
-- **Enviar ruta:** `ros2 service call /waypoint_rviz_node/send_path std_srvs/srv/Empty`
-- **Borrar waypoints:** `ros2 service call /waypoint_rviz_node/clear_waypoints std_srvs/srv/Empty`
+- Click **Publish Point** on the map to add waypoints
+- Send route: `ros2 service call /send_path std_srvs/srv/Empty`
+- Clear: `ros2 service call /waypoint_rviz_node/clear_waypoints std_srvs/srv/Empty`
 
----
+**Load a previously recorded route as reference:**
 
-## Dudas y trucos
-
-**¿Qué se ve en RViz?**  
-- Fondo con rejilla (o imagen de pista si usas waypoint_rviz_launch).  
-- Guía de referencia: línea **verde** con esferas y flechas.  
-- Waypoints activos: esferas **ámbar** con línea amarilla.  
-- Marcador de inicio: cilindro **azul**; meta: cilindro **rojo**.
-
-**¿Borrar waypoints sin cerrar todo?**  
 ```bash
-ros2 service call /clear_waypoints std_srvs/srv/Empty
-```
-
-**¿Dónde están las rutas grabadas?**  
-En `Development/ros2/routes/` (archivos `.json`).
-
-**Recompilar tras cambiar código:**  
-```bash
-colcon build --packages-up-to qcar2_autonomy && source install/setup.bash
+ros2 launch qcar2_autonomy waypoint_rviz_launch.py \
+  reference_file:=/workspaces/isaac_ros-dev/ros2/routes/my_route.json
 ```
 
 ---
 
-## Próximos pasos: Visión y homografía
+## 🖥️ Web Dashboard
 
-En desarrollo: **control del robot mediante visión** usando **homografía** para relacionar la vista de la cámara con el plano del mapa o del circuito (p. ej. puntos 7 y 8 de una libreta de control por visión).
+Professional browser-based control center at `http://localhost:8085`.
 
-Recursos de referencia:
+**Features:**
+- 🗺️ **Track Map** — Live QLabs overhead with car position, path, and waypoint overlay
+- 📷 **CSI Camera** — Front fisheye camera feed
+- 🎨 **RGBD Color** — Intel RealSense color stream
+- 🌊 **RGBD Depth** — Colorized depth map (TURBO colormap)
+- 📊 **Telemetry** — Linear/angular velocity charts, pose, heading
+- 🎯 **Click-to-Waypoint** — Click on the map canvas to add waypoints
+- ↶ **Undo / Clear / Send** — Route management buttons
 
-| Tema | Enlace |
-|------|--------|
-| Homography vs Perspective Transform | [Substack — findHomography vs getPerspectiveTransform](https://shravankumar147.substack.com/p/homography-vs-perspective-transform) |
-| Feature Matching + Homography (OpenCV) | [OpenCV Tutorial — find objects](https://docs.opencv.org/3.4/d1/de0/tutorial_py_feature_homography.html) |
-| Object tracking con homografía | [GeeksforGeeks — OpenCV Object Tracking using Homography](https://www.geeksforgeeks.org/python/python-opencv-object-tracking-using-homography/) |
-
-- **`getPerspectiveTransform`:** 4 puntos conocidos, transformación proyectiva fija (documentos, corrección de perspectiva).  
-- **`findHomography`:** Múltiples puntos, RANSAC, robusto a outliers (stitching, AR, tracking de objetos planos).
+**Architecture:** Python HTTP server + MJPEG streaming + Canvas-based map with frame polling. Zero external dependencies.
 
 ---
 
-## Estructura del repositorio
+## 📁 Project Structure
 
 ```
 ACC_Development/
 ├── README.md
-├── run_t1.sh                    # T1: QLabs
-├── run_t2.sh                    # T2: Cartographer
-├── isaac_ros_common/            # Contenedor de desarrollo
+├── run_t1.sh                          # T1: QLabs scenario launcher (interactive menu)
+├── run_t2.sh                          # T2: Isaac ROS container + QCar + Cartographer
+├── run_t2_web.sh                      # T2 variant: includes Web Dashboard
+├── run_qcar2.sh                       # Standalone QCar launch
+│
+├── isaac_ros_common/                  # NVIDIA Isaac ROS development container
+│
 ├── Development/
+│   ├── python_resources/              # Quanser Python libraries (qcar, qcar2, roadmap)
 │   └── ros2/
-│       ├── COMANDOS_WAYPOINTS.txt    # Comandos completos (este README los resume)
-│       ├── record.sh                 # Grabar ruta
-│       ├── navigate.sh               # Reproducir ruta
-│       ├── routes/                   # Rutas grabadas (.json)
+│       ├── record.sh                  # Route recording helper
+│       ├── navigate.sh                # Route replay helper
+│       ├── run_qcar2_with_map.sh      # Internal: QCar + Cartographer
+│       ├── run_qcar2_with_web_dashboard.sh  # Internal: + Web Dashboard
+│       ├── routes/                    # Saved routes (.json)
 │       └── src/
-│           ├── qcar2_autonomy/       # Waypoints, Pure Pursuit, Stanley, GUI, RViz
-│           ├── qcar2_nodes/          # TF, Cartographer, converter
-│           └── qcar2_interfaces/
-└── ...
+│           ├── qcar2_autonomy/        # 🎯 Main autonomy package
+│           │   ├── autonomy/
+│           │   │   ├── waypoint_follower_pure_pursuit.py  # Pure Pursuit v9
+│           │   │   ├── waypoint_follower_stanley.py       # Stanley controller
+│           │   │   ├── qcar_web_dashboard.py              # Web Dashboard
+│           │   │   ├── qcar_dashboard_gui.py              # Matplotlib GUI
+│           │   │   ├── qcar_pose_from_qlabs_node.py       # QLabs ground truth
+│           │   │   ├── route_recorder.py                  # Record routes
+│           │   │   ├── route_player.py                    # Replay routes
+│           │   │   ├── simple_teleop_keyboard.py          # Keyboard control
+│           │   │   └── waypoint_rviz_node.py              # RViz waypoints
+│           │   ├── launch/
+│           │   │   ├── waypoint_web_launch.py             # QCar+SLAM+PP+WebDash
+│           │   │   ├── waypoint_full_launch.py            # QCar+SLAM+PP+GUI
+│           │   │   ├── qcar_web_dashboard_launch.py       # WebDash+PP standalone
+│           │   │   └── waypoint_rviz_launch.py            # RViz waypoints
+│           │   └── config/
+│           ├── qcar2_nodes/           # Hardware drivers, TF, Cartographer
+│           └── qcar2_interfaces/      # Custom ROS messages/services
+│
+├── docker/                            # Docker configurations
+│   ├── quanser_docker/                # QLabs virtual QCar container
+│   └── development_docker/            # Dev environment setup
+│
+└── scripts/
+    └── setup_swap_8gb.sh              # Swap memory setup for low-RAM systems
 ```
 
 ---
 
-## Contribuir
+## 🗺️ Roadmap
 
-Si quieres proponer cambios o contribuir al proyecto, hazlo mediante **Pull Request (PR)** para mantener un historial claro y revisar el código antes de integrarlo.
+### ✅ Completed
 
-### Revisar issues
+- [x] Pure Pursuit controller v9 with anti-zigzag tuning
+- [x] Stanley controller (alternative)
+- [x] SLAM via Cartographer (2D mapping + localization)
+- [x] Drive & Record (keyboard teleop → JSON routes → autonomous replay)
+- [x] RViz waypoint placement with track background
+- [x] Interactive `run_t1.sh` scenario menu (4 scenarios + stop/restart)
+- [x] Matplotlib GUI for waypoint management
+- [x] Web Dashboard with 4 camera feeds + telemetry + click-to-waypoint
+- [x] QLabs overhead camera integration
+- [x] Ground-truth pose from QLabs (`qcar_pose_from_qlabs_node`)
 
-Antes de meter código, revisa los **Issues** del repo: qué está abierto, qué le toca a cada uno (documentación, autonomía, RViz, visión, etc.) y si hay alguno asignado o que quieras tomar. Si vas a trabajar en **cosas distintas**, usa **una rama por issue o por tema** (p. ej. `fix/issue-5-rviz` o `feature/issue-12-homografia`), haz ahí tus commits y, cuando termines ese issue, abre un PR con todo lo que hiciste para ese tema. Así se revisa por bloques y luego se hace merge a `main`.
+### 🔧 In Progress / Next Steps
 
-### Cómo contribuir
+- [ ] **Test Pure Pursuit v9** — Validate anti-zigzag parameters in QLabs
+- [ ] **Traffic light detection** — Camera-based red/green/yellow classification
+- [ ] **Stop sign detection** — YOLO or classical CV for stop sign recognition
+- [ ] **Yield sign handling** — Detect and react to yield signs
+- [ ] **Roundabout navigation** — Merge/exit logic for the roundabout section
+- [ ] **Lane following** — Camera-based lane centering as fallback controller
+- [ ] **Velocity adaptation** — Slow down at curves, speed up on straights
+- [ ] **Obstacle avoidance** — Lidar-based reactive obstacle avoidance
+- [ ] **Competition integration** — Full autonomous run: start → navigate all signs → finish
 
-1. **Fork** del repositorio y clona tu copia en local.
-2. Revisa los **Issues** y decide en qué trabajar; si son tareas diferentes, **crea una rama por cada una** (p. ej. `feature/nombre-funcionalidad` o `fix/issue-N-descripcion`).
-3. Trabaja en esa rama: **commits** con mensajes descriptivos.
-4. Cuando hayas terminado el issue o la funcionalidad, abre un **Pull Request** contra `main` describiendo qué hiciste para ese issue.
-5. Tras la revisión, el maintainer hará **merge a `main`** con tus cambios.
+### 💡 Future Ideas
 
-### Qué incluir en el PR
-
-Para que la revisión sea ágil y el proyecto se mantenga ordenado, en la descripción del PR indica:
-
-| Campo | Qué poner |
-|-------|-----------|
-| **Resumen** | Qué problema resuelves o qué funcionalidad añades. |
-| **Cambios realizados** | Lista de los cambios concretos (archivos o comportamientos). |
-| **Secciones/áreas modificadas** | Qué partes del proyecto tocas: documentación (README, COMANDOS_WAYPOINTS), paquetes ROS 2 (qcar2_autonomy, qcar2_nodes), scripts, launch, config RViz, etc. |
-| **Motivo** | Por qué se hace el cambio (bug, mejora, nueva feature). |
-
-Los maintainers revisarán el PR y podrán pedir ajustes. Una vez aprobado, se hace **merge a `main`** y tus commits quedan integrados. Si el PR cierra un issue, incluye en la descripción *Closes #N* (sustituye N por el número del issue) para que se cierre automáticamente al hacer merge.
-
----
-
-## Referencias
-
-- [Quanser](https://www.quanser.com/) — QCar 2 e Interactive Labs.  
-- [NVIDIA Isaac ROS](https://nvidia-isaac-ros.github.io/) — Entorno de desarrollo en contenedor.  
-- [Smart Mobility 2025](https://github.com/abrahammorohdez19/smart_mobility_2025) — Referencia Pure Pursuit / QCar.  
-- [PythonRobotics](https://github.com/AtsushiSakai/PythonRobotics) — Pure Pursuit y path tracking.  
-- **Homografía y visión:** [Substack](https://shravankumar147.substack.com/p/homography-vs-perspective-transform) · [OpenCV Feature Homography](https://docs.opencv.org/3.4/d1/de0/tutorial_py_feature_homography.html) · [GeeksforGeeks Object Tracking](https://www.geeksforgeeks.org/python/python-opencv-object-tracking-using-homography/).
+- [ ] Multi-vehicle coordination
+- [ ] Real QCar 2 hardware deployment
+- [ ] Path optimization (minimum curvature)
+- [ ] Reinforcement learning controller
 
 ---
 
-## Licencia
+## 🤝 Contributing
 
-Este proyecto utiliza licencia **Apache 2.0**. Compatible con el ecosistema ROS 2 y con recursos académicos de Quanser.
+Contributions are welcome via **Pull Requests**.
+
+### Workflow
+
+1. **Fork** the repository and clone locally
+2. Check **Issues** for open tasks
+3. Create a **feature branch**: `git checkout -b feature/my-feature`
+4. Commit with descriptive messages
+5. Open a **Pull Request** against `main`
+
+### PR Description Template
+
+| Field | Content |
+|-------|---------|
+| **Summary** | What problem does this solve / what feature does it add? |
+| **Changes** | List of concrete changes (files, behaviors) |
+| **Areas modified** | Which packages/modules? (autonomy, nodes, launch, config) |
+| **Testing** | How was this tested? (QLabs sim, unit test, etc.) |
+
+Include `Closes #N` in the PR description to auto-close issues.
+
+---
+
+## 📚 References
+
+- [Quanser](https://www.quanser.com/) — QCar 2 & Interactive Labs
+- [NVIDIA Isaac ROS](https://nvidia-isaac-ros.github.io/) — Development container
+- [PythonRobotics](https://github.com/AtsushiSakai/PythonRobotics) — Pure Pursuit reference
+- [Smart Mobility 2025](https://github.com/abrahammorohdez19/smart_mobility_2025) — QCar reference project
+- [Google Cartographer](https://google-cartographer.readthedocs.io/) — SLAM framework
+- [OpenCV](https://docs.opencv.org/) — Computer vision library
+
+---
+
+## 📄 License
+
+This project is licensed under **Apache 2.0** — compatible with the ROS 2 ecosystem and Quanser academic resources.

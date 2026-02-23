@@ -36,3 +36,16 @@ Thumbs.db
 
 # Rutas grabadas (opcional: descomenta si no quieres subir JSONs)
 # Development/ros2/routes/*.json
+
+# External repos / zips
+smart_mobility_2025-main/
+smart_mobility_2025-main.zip
+
+# Docker (heavy, machine-specific)
+docker/
+
+# Isaac ROS (submodule / external)
+isaac_ros_common/
+
+# Scripts (local setup helpers)
+scripts/

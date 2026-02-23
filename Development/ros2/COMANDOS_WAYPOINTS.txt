@@ -8,6 +8,165 @@ reproducirlas de forma autónoma con precisión profesional.
 REQUISITO PREVIO (En tu PC / Host):
   xhost +local:
 
+--------------------------------------------------------------------------------
+  RESUMEN RÁPIDO — Comandos y test del clic (probar que el mapa de la pista quedó)
+--------------------------------------------------------------------------------
+
+  1. Terminal 1:   cd /home/alfonsd/Documents/ACC_Development && ./run_t1.sh
+  2. Terminal 2:   cd /home/alfonsd/Documents/ACC_Development && ./run_t2.sh
+  3. Terminal 3:   cd /home/alfonsd/Documents/ACC_Development && ./isaac_ros_common/scripts/run_dev.sh ./Development -- bash
+  4. Dentro del contenedor:
+       cd /workspaces/isaac_ros-dev/ros2
+       colcon build --packages-select qcar2_autonomy
+       source install/setup.bash
+       ros2 launch qcar2_autonomy waypoint_rviz_launch.py
+
+  5. En RViz — Probar que el mapa y el clic funcionan:
+     - Deberías ver la pista de fondo y la flecha amarilla (QCar).
+     - Selecciona la herramienta "Publish Point" (icono en la barra).
+     - Si acabas de cambiar de QLabs a RViz: haz PRIMERO un clic en el área del mapa (cualquier sitio) para dar foco; luego haz el clic donde está el QCar en QLabs.
+     - El clic tiene que ser SOBRE el mapa o la rejilla (no en zona vacía).
+     - Si todo va bien: en la terminal del launch sale "Clic recibido" y la flecha salta al punto del clic.
+     - Si el clic no va: más abajo está "HARDCODEAR CALIBRACIÓN" (YAML o ros2 param set).
+     - Si la pista y la flecha no coinciden en escala: más abajo "ESCALA DE LA PISTA NO COINCIDE".
+
+--------------------------------------------------------------------------------
+  PROBAR TELEOP — Ver que el coche en QLabs y la flecha en RViz se mueven a la par
+--------------------------------------------------------------------------------
+  Con T1, T2 y el launch de RViz ya corriendo, abre una CUARTA terminal (dentro del contenedor):
+
+    cd /workspaces/isaac_ros-dev/ros2
+    source install/setup.bash
+    ros2 run qcar2_autonomy simple_teleop_keyboard
+
+  Teclas: W adelante, S atrás, A/D girar, X parar, Q salir.
+  Deberías ver el coche moverse en QLabs y la flecha amarilla moverse igual en RViz.
+
+--------------------------------------------------------------------------------
+  PROBAR GENERACIÓN DEL MAPA CON LIDAR (ver /map en RViz mientras conduces)
+--------------------------------------------------------------------------------
+  Para ver cómo Cartographer construye el mapa con el LiDAR mientras haces teleop:
+
+  1. Terminal 1:  cd /home/alfonsd/Documents/ACC_Development && ./run_t1.sh
+  2. Terminal 2:  cd /home/alfonsd/Documents/ACC_Development && ./run_t2.sh
+  3. Terminal 3 (contenedor):
+       cd /workspaces/isaac_ros-dev/ros2
+       source install/setup.bash
+       ros2 launch qcar2_autonomy view_cartographer_map_launch.py
+  4. Terminal 4 (contenedor):
+       cd /workspaces/isaac_ros-dev/ros2 && source install/setup.bash
+       ros2 run qcar2_autonomy simple_teleop_keyboard
+
+  En RViz verás el mapa (/map) que se va generando, el escaneo LiDAR (/scan) y la
+  flecha del QCar. Conduce con W/S/A/D y comprueba que el mapa se dibuja bien.
+
+--------------------------------------------------------------------------------
+  USAR EL JSON DE WAYPOINTS COMO REFERENCIA EN RVIZ
+--------------------------------------------------------------------------------
+  El .json que grabas (o guardas desde RViz) puedes usarlo de dos formas:
+
+  (1) Referencia visual (línea VERDE en RViz): solo para ver la ruta, sin enviarla al coche.
+      Lanza con:  reference_file:=/ruta/a/tu_ruta.json
+      Verás la ruta dibujada en verde; puedes poner waypoints amarillos encima (modo calca).
+
+  (2) Ruta a seguir (waypoints AMARILLOS): para que el coche repita esa ruta.
+      Lanza con:  load_file:=/ruta/a/tu_ruta.json
+      Esos puntos se cargan como waypoints activos; send_path los manda al follower.
+
+  Puedes usar el mismo .json en ambos: reference_file y load_file con el mismo archivo,
+  para ver la referencia en verde y además tenerla como ruta a seguir.
+
+================================================================================
+        VER QUE TODO SE VEA BIEN (RVIZ + PISTA + QCAR ALINEADO)
+================================================================================
+
+Sigue este orden para abrir RViz con la pista y que el QCar coincida con QLabs:
+
+--- TERMINAL 1 (Host): QLabs ---
+cd /home/alfonsd/Documents/ACC_Development
+./run_t1.sh
+
+--- TERMINAL 2 (Host): Cartographer (publica /map y TF) ---
+cd /home/alfonsd/Documents/ACC_Development
+./run_t2.sh
+
+--- TERMINAL 3 (Host): Entrar al contenedor ---
+cd /home/alfonsd/Documents/ACC_Development
+./isaac_ros_common/scripts/run_dev.sh ./Development -- bash
+
+--- DENTRO DEL CONTENEDOR (Terminal 3): Build y launch RViz ---
+cd /workspaces/isaac_ros-dev/ros2
+colcon build --packages-select qcar2_autonomy
+source install/setup.bash
+ros2 launch qcar2_autonomy waypoint_rviz_launch.py
+
+--- En RViz ---
+  1. Deberías ver la pista de fondo y la flecha amarilla (QCar).
+  2. Si la flecha NO está donde está el coche en QLabs: con "Publish Point" haz UN clic
+     exactamente donde está el QCar en QLabs. La flecha saltará ahí.
+  3. IMPORTANTE — Herramienta y TF:
+     - El launch publica "map" en el TF para que RViz pueda publicar en /clicked_point al hacer clic.
+     - En RViz: selecciona la herramienta "Publish Point" (icono en la barra) y haz un clic en el mapa
+       donde está el QCar en QLabs. Debe salir "Clic recibido" en la terminal.
+     - Para que la flecha SE MUEVA al punto del clic, T1 (QLabs) y T2 (Cartographer) deben estar corriendo.
+  4. Si al hacer clic la flecha NO se mueve: en la terminal debe salir "Clic recibido en (...)".
+     Si no sale nada: comprueba que "Publish Point" está seleccionado y que T1+T2 están en marcha.
+     Si sale "TF no disponible": T2 (Cartographer) no está corriendo; ábrelo y vuelve a hacer clic.
+  5. Al cerrar con Ctrl+C se guarda la calibración para la próxima vez.
+
+  --- Por qué a veces no detecta el clic (al cambiar de QLabs a RViz) ---
+  En RViz el clic solo se publica en /clicked_point cuando:
+  (1) El VIEWPORT 3D tiene el foco: si acabas de cambiar de la ventana de QLabs a RViz, el primer
+      clic puede solo "dar foco" al área del mapa y no publicar. Solución: haz un clic dentro del
+      área del mapa (sin importar dónde), y a continuación haz el clic de Publish Point donde está el QCar.
+  (2) El clic es SOBRE un objeto: la herramienta Publish Point de RViz solo publica cuando el rayo
+      del ratón toca geometría (el mapa, la rejilla, etc.). Clic en "zona vacía" (cielo/fondo) no publica.
+  En Gazebo suele funcionar distinto porque muchas herramientas usan un plano del suelo por defecto;
+  en RViz es intersección con objetos, por eso hay que clicar sobre el mapa/rejilla.
+
+--------------------------------------------------------------------------------
+  HARDCODEAR CALIBRACIÓN (sin depender del clic en RViz)
+--------------------------------------------------------------------------------
+  Si el clic en RViz no te funciona, puedes fijar la calibración a mano:
+
+  Opción A — Editar el YAML (se carga al iniciar el launch):
+    Edita el fichero (en el repo):
+      Development/ros2/src/qcar2_autonomy/config/qcar_pose_calibration.yaml
+    Cambia pose_offset_x, pose_offset_y, pose_offset_theta hasta que la flecha
+    coincida con el coche en QLabs. Vuelve a hacer colcon build y lanzar.
+    (O edita la copia en install/share/qcar2_autonomy/config/ si no quieres rebuild.)
+
+  Opción B — Parámetros en caliente + guardar (con el launch ya corriendo):
+    En otra terminal DENTRO del contenedor:
+      ros2 param set /robot_pose_marker_node pose_offset_x -2.673
+      ros2 param set /robot_pose_marker_node pose_offset_y 0.377
+      ros2 param set /robot_pose_marker_node pose_offset_theta 0.22
+    (Ajusta los números a lo que necesites; theta en radianes.)
+    Para guardar en el YAML y que persista al cerrar:
+      ros2 service call /robot_pose_marker_node/save_calibration std_srvs/srv/Empty
+
+  Opción C — Lanzar sin calibración por clic (usa solo YAML o params del launch):
+    ros2 launch qcar2_autonomy waypoint_rviz_launch.py enable_click_calibration:=false
+    y usa Opción A o B para los valores.
+
+--------------------------------------------------------------------------------
+  ESCALA DE LA PISTA NO COINCIDE CON QLABS (flecha se mueve pero la imagen no)
+--------------------------------------------------------------------------------
+  Si la flecha se mueve con el teleop pero la imagen de la pista está "desplazada"
+  o a otra escala respecto a QLabs, es que la imagen usa un extent por defecto que
+  no es el de Cartographer. Sincroniza una vez con el /map real:
+
+  1. Con T1 (QLabs) y T2 (Cartographer) corriendo, en una terminal DENTRO del contenedor:
+       ros2 run qcar2_autonomy sync_circuit_from_map_node
+  2. Espera a que escriba circuit_extent_from_map.yaml y salga.
+  3. Reinicia el launch de RViz (Ctrl+C y de nuevo ros2 launch qcar2_autonomy waypoint_rviz_launch.py).
+
+  Así la imagen de la pista usará la misma escala y origen que el mapa de Cartographer
+  (el mismo que QLabs) y la pista y la flecha harán match.
+
+(Opcional) Sincronizar pista con el mapa real de Cartographer (una vez):
+  ros2 run qcar2_autonomy sync_circuit_from_map_node
+
 ================================================================================
         FASE 1: GRABAR UNA RUTA (🎥 RECORDING)
 ================================================================================
@@ -112,20 +271,169 @@ ros2 launch qcar2_autonomy waypoint_rviz_launch.py \
 ================================================================================
 
 1. ¿Qué se ve en RViz?
-   - Fondo oscuro con rejilla sutil (sin imagen de pista).
-   - Guía de referencia: LÍNEA VERDE neón con esferas verdes + flechas de dirección.
-   - Waypoints activos: ESFERAS ÁMBAR con línea amarilla + flechas de dirección.
-   - Marcador de inicio: CILINDRO AZUL en el primer punto.
-   - Marcador de meta: CILINDRO ROJO en el último punto.
+   - Fondo: imagen de la pista (circuit_map) o rejilla; guía verde (si usas reference_file).
+   - Waypoints activos: esferas ámbar + línea amarilla; inicio AZUL, meta ROJA.
+   - Flecha amarilla = posición del QCar. Debe coincidir con el coche en QLabs.
 
-2. ¿Cómo borrar todo y empezar de cero?
+2. El QCar (flecha amarilla) no coincide con la posición en QLabs — ¿por qué?
+   - La imagen de la pista en RViz SÍ está en coordenadas cartesianas (igual que QLabs).
+   - La POSICIÓN del QCar en RViz viene del TF (map → base_link), que publica Cartographer/sim.
+   - El origen del frame "map" puede no coincidir con el de la imagen (p. ej. Cartographer pone
+     el origen donde arrancó el robot), así que la flecha sale en otro sitio hasta que calibras.
+   - Requisito: T1 (QLabs) y T2 (Cartographer) deben estar corriendo para que exista el TF.
+   - Solución: haz UN clic en RViz (Publish Point) exactamente donde está el QCar en QLabs.
+     La flecha saltará ahí y quedará alineada. Al cerrar el launch se guarda la calibración.
+   - (Ese clic puede añadir un waypoint; si no lo quieres: clear_waypoints.)
+
+3. ¿Cómo borrar todo y empezar de cero?
    - Ctrl+C en todas las terminales.
    - Si quieres borrar los puntos grabados en el grabador sin cerrar: 
      ros2 service call /clear_waypoints std_srvs/srv/Empty
 
-3. ¿Dónde están mis archivos de ruta?
+4. ¿Dónde están mis archivos de ruta?
    - En la carpeta: routes/ (dentro de ros2/)
 
-4. Recompilar (Obligatorio tras cambiar código .py):
+5. Recompilar (Obligatorio tras cambiar código .py):
    # Usamos --packages-up-to para compilar también las interfaces necesarias
    colcon build --packages-up-to qcar2_autonomy && source install/setup.bash
+
+6. RViz: mapa de pista se ve pixelado
+   - El launch ya usa resolución fina (1 celda ≈ 1 pixel de pista_qcar2.png).
+   - Si aun así se ve grueso, en waypoint_rviz_launch.py baja "fixed_resolution" (ej. 0.005).
+
+7. Sincronizar la pista (screenshot) con el mapa de QLabs/Cartographer
+   - Con QLabs y Cartographer corriendo (y /map publicado), ejecuta UNA vez:
+     ros2 run qcar2_autonomy sync_circuit_from_map_node
+   - Eso lee /map, actualiza homography_calibration.yaml y circuit_extent_from_map.yaml
+     para que la imagen de la pista y las coordenadas en RViz usen las mismas medidas que el mapa real.
+   - Luego reinicia el launch de waypoint_rviz (o lanza de nuevo); el circuit_map usará ese extent.
+
+8. RViz: error "GLSL link result ... active samplers with a different type"
+   - Es un fallo conocido del plugin Map de RViz con algunos drivers OpenGL.
+   - Prueba: lanzar RViz con software rendering (puede ir más lento)
+     export LIBGL_ALWAYS_SOFTWARE=1
+     ros2 launch qcar2_autonomy waypoint_rviz_launch.py
+   - O actualizar drivers gráficos / RViz2. A veces el mapa se ve igual pese al mensaje.
+
+================================================================================
+        REFERENCIAS — QLabs QCar 2
+================================================================================
+  API oficial (posición, velocidad, cámaras, LIDAR, etc.):
+  https://qlabs.quanserdocs.com/en/latest/Objects/qcar2_library.html
+
+  Detalles útiles para nuestro flujo:
+  - Coordenadas: QLabs usa "full-scale"; posiciones físicas × 10 = ubicación en QLabs.
+    En este proyecto el bridge (T2/Cartographer) publica TF en metros; sync_circuit_from_map
+    alinea la imagen de la pista con ese mismo marco.
+  - set_velocity_and_request_state(forward, turn, ...): control por velocidad y giro (rad).
+  - get_world_transform(): devuelve location, rotation, scale del coche en el mundo.
+  - set_transform_and_request_state(location, rotation, ...): fijar pose (p. ej. playback).
+  - Spawn con scale [0.1, 0.1, 0.1] = tamaño físico del QCar; location en full-scale (×10).
+
+--------------------------------------------------------------------------------
+  REDUCIR DESFASE: flecha en RViz a la par con el QCar en QLabs (sin retraso SLAM)
+--------------------------------------------------------------------------------
+  El TF map→base_link lo publica Cartographer (SLAM), así que puede haber un poco
+  de retraso o desfase. Con la API de QLabs (get_world_transform) podemos publicar
+  la pose "ground truth" del simulador y usar esa para el marcador:
+
+  1. En un entorno donde tengas qvl (Quanser) y ROS2 (mismo ROS_DOMAIN_ID que el resto):
+       ros2 run qcar2_autonomy qcar_pose_from_qlabs_node
+     (Con QLabs abierto y el QCar ya spawneado, ej. tras T1.) Ese nodo publica en /qcar_pose_gt.
+
+  2. Lanza RViz con el marcador usando esa fuente:
+       ros2 launch qcar2_autonomy waypoint_rviz_launch.py use_pose_gt_topic:=true
+     Así la flecha sigue /qcar_pose_gt en vez del TF de Cartographer y va a la par con QLabs.
+
+  Si qcar_pose_from_qlabs_node no puede conectarse a QLabs (ej. lo ejecutas en el contenedor
+  de desarrollo sin qvl), usa el flujo normal (TF de Cartographer); el desfase suele ser pequeño.
+
+================================================================================
+  MODO DASHBOARD PREMIUM + PURE PURSUIT (Navegación con clicks en el mapa)
+================================================================================
+
+  REQUISITO PREVIO (En tu PC / Host):
+    xhost +local:
+
+  T1 (HOST) — QLabs:
+    cd /home/alfonsd/Documents/ACC_Development && ./run_t1.sh
+
+  T2 (HOST) — Cartographer:
+    cd /home/alfonsd/Documents/ACC_Development && ./run_t2.sh
+
+  T3 (HOST) — Entrar al contenedor:
+    cd /home/alfonsd/Documents/ACC_Development && ./isaac_ros_common/scripts/run_dev.sh ./Development -- bash
+
+  T4 (CONTENEDOR) — Backend (Pose + TF):
+    cd /workspaces/isaac_ros-dev/ros2 && colcon build --packages-select qcar2_autonomy && source install/setup.bash && ros2 launch qcar2_autonomy qcar_dashboard_only_launch.py
+
+  T5 (CONTENEDOR) — Dashboard Premium:
+    cd /workspaces/isaac_ros-dev/ros2 && source install/setup.bash && ros2 run qcar2_autonomy qcar_dashboard_gui
+
+  T6 (CONTENEDOR) — Pure Pursuit (Nuestro):
+    cd /workspaces/isaac_ros-dev/ros2 && source install/setup.bash && ros2 run qcar2_autonomy waypoint_follower_pure_pursuit
+
+  USO:
+    1. Haz clic en la pista para poner waypoints (diamantes ámbar)
+    2. Presiona "ENVIAR RUTA" → el coche se mueve
+    3. "BORRAR" limpia los puntos
+    4. "ROUTE INFO" muestra info de la ruta
+
+================================================================================
+  MODO SMART MOBILITY PREMIUM (Código del Repo de Competencia)
+================================================================================
+
+  Usa el Pure Pursuit avanzado del repo smart_mobility_2025-main.
+  Incluye: evaluación de trayectoria, gráficas, detección de obstáculos.
+
+  T1 (HOST) — QLabs:
+    cd /home/alfonsd/Documents/ACC_Development && ./run_t1.sh
+
+  T2 (HOST) — Cartographer:
+    cd /home/alfonsd/Documents/ACC_Development && ./run_t2.sh
+
+  T3 (HOST) — Entrar al contenedor:
+    cd /home/alfonsd/Documents/ACC_Development && ./isaac_ros_common/scripts/run_dev.sh ./Development -- bash
+
+  T4 (CONTENEDOR) — Compilar y Backend:
+    cd /workspaces/isaac_ros-dev/ros2 && colcon build --packages-select qcar2_autonomy && source install/setup.bash && ros2 launch qcar2_autonomy qcar_dashboard_only_launch.py
+
+  T5 (CONTENEDOR) — Bridge (Traductor de topics):
+    cd /workspaces/isaac_ros-dev/ros2 && source install/setup.bash && ros2 run qcar2_autonomy smart_mobility_bridge
+
+  T6 (CONTENEDOR) — Smart Pure Pursuit (con waypoints CSV):
+    cd /workspaces/isaac_ros-dev/ros2 && source install/setup.bash && ros2 run qcar2_autonomy smart_pure_pursuit --ros-args -p path_csv:=/workspaces/isaac_ros-dev/ros2/install/qcar2_autonomy/share/qcar2_autonomy/config/waypoints_smart_mobility.csv -p v_ref:=0.15
+
+  T6 ALTERNATIVA — Smart Pure Pursuit (círculo automático):
+    cd /workspaces/isaac_ros-dev/ros2 && source install/setup.bash && ros2 run qcar2_autonomy smart_pure_pursuit --ros-args -p circle_radius:=0.8 -p v_ref:=0.10
+
+  T7 (CONTENEDOR, OPCIONAL) — LiDAR Alert (para obstáculos):
+    cd /workspaces/isaac_ros-dev/ros2 && source install/setup.bash && ros2 run qcar2_autonomy smart_lidar_alert
+
+  T8 (CONTENEDOR, OPCIONAL) — Grabador de trayectoria CSV:
+    cd /workspaces/isaac_ros-dev/ros2 && source install/setup.bash && ros2 run qcar2_autonomy smart_trayectoria_grabar
+
+  NOTA: Al cerrar el Smart Pure Pursuit (Ctrl+C), genera gráficas automáticas
+  de evaluación (error promedio, máximo, desviación estándar, etc.)
+
+================================================================================
+  MODO COMBINADO: Dashboard + Smart Pure Pursuit
+================================================================================
+
+  Combina el Dashboard visual con el controlador avanzado del repo.
+
+  T1-T3: Igual que arriba (QLabs, Cartographer, Contenedor)
+
+  T4 (CONTENEDOR) — Backend:
+    cd /workspaces/isaac_ros-dev/ros2 && colcon build --packages-select qcar2_autonomy && source install/setup.bash && ros2 launch qcar2_autonomy qcar_dashboard_only_launch.py
+
+  T5 (CONTENEDOR) — Dashboard Premium:
+    cd /workspaces/isaac_ros-dev/ros2 && source install/setup.bash && ros2 run qcar2_autonomy qcar_dashboard_gui
+
+  T6 (CONTENEDOR) — Bridge:
+    cd /workspaces/isaac_ros-dev/ros2 && source install/setup.bash && ros2 run qcar2_autonomy smart_mobility_bridge
+
+  T7 (CONTENEDOR) — Smart Pure Pursuit (usa los waypoints del Dashboard):
+    cd /workspaces/isaac_ros-dev/ros2 && source install/setup.bash && ros2 run qcar2_autonomy smart_pure_pursuit --ros-args -p v_ref:=0.15
+
+  USO: Haz clic en el Dashboard, envía la ruta, y el Smart PP la sigue.

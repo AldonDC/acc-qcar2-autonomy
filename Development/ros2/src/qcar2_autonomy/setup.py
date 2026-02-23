@@ -44,7 +44,20 @@ setup(
             'waypoint_rviz_node=autonomy.waypoint_rviz_node:main',
             'robot_pose_marker_node=autonomy.robot_pose_marker_node:main',
             'route_recorder=autonomy.route_recorder:main',
-            'route_player=autonomy.route_player:main'
+            'route_player=autonomy.route_player:main',
+            'test_homography_tool=autonomy.test_homography_tool:main',
+            'homography_markers_node=autonomy.homography_markers_node:main',
+            'sync_circuit_from_map_node=autonomy.sync_circuit_from_map_node:main',
+            'qcar_pose_from_qlabs_node=autonomy.qcar_pose_from_qlabs_node:main',
+            'pose_gt_to_tf_node=autonomy.pose_gt_to_tf_node:main',
+            'qcar_dashboard_gui=autonomy.qcar_dashboard_gui:main',
+            'qcar_web_dashboard=autonomy.qcar_web_dashboard:main',
+            # Smart Mobility Premium Nodes
+            'smart_pure_pursuit=autonomy.smart_mobility.qcar_pure_pursuit:main',
+            'smart_pose_final=autonomy.smart_mobility.pose_final_qcar:main',
+            'smart_lidar_alert=autonomy.smart_mobility.qcar_lidar_alert_2:main',
+            'smart_trayectoria_grabar=autonomy.smart_mobility.trayectoria_grabar_csv_node:main',
+            'smart_mobility_bridge=autonomy.smart_mobility_bridge:main',
         ],
     },
 )

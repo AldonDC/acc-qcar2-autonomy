@@ -1,0 +1,21 @@
+# Calibración homografía: pixel (imagen pista_qcar2.png) <-> mundo (metros, frame map/QLabs).
+# Imagen usada: config/pista_qcar2.png (1152 x 896 px).
+# Mínimo 4 puntos. Con 4 se usa getPerspectiveTransform; con más, findHomography (RANSAC).
+# Referencias: Substack (Homography vs Perspective), OpenCV Feature Homography, GeeksforGeeks.
+
+image_file: "pista_qcar2.png"
+
+# 4 esquinas de pista_qcar2.png (1152x896) -> extensión mundo (misma que circuit_map_publisher: fixed_extent).
+# Ajusta world [x,y] a las medidas reales de tu circuito en QLabs si es necesario.
+points:
+  - pixel: [0, 0]       # esquina superior izquierda
+    world: [-4.1, 5.38]
+  - pixel: [1152, 0]    # esquina superior derecha
+    world: [4.1, 5.38]
+  - pixel: [1152, 896]  # esquina inferior derecha
+    world: [4.1, -1.0]
+  - pixel: [0, 896]     # esquina inferior izquierda
+    world: [-4.1, -1.0]
+
+# Opcional: más puntos mejoran la estimación con findHomography (RANSAC).
+# calibration_points: []

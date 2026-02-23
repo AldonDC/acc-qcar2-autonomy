@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 Seguidor de ruta con controlador Stanley y pose real desde TF (map -> base_link).
-Sigue la trayectoria mucho mejor que dead-reckoning. Modelo tipo bicicleta:
-  omega = v * tan(steering) / L.
-Publica en /cmd_vel_nav. Escucha /waypoints_path.
+Sigue el path (cross-track + heading) y suele pasar mejor por los waypoints que Pure Pursuit.
+Publica en /cmd_vel_nav (linear.x = v, angular.z = steering_angle en rad). Escucha /waypoints_path.
+Mismo protocolo que Pure Pursuit para el converter (angular.z = ángulo de dirección).
 """
 import math
 import rclpy
@@ -225,22 +225,16 @@ class WaypointFollowerStanley(Node):
             cross /= seg_norm
         heading_error = wrap_angle(path_angle - theta)
 
-        # Stanley: delta = heading_error + atan(k * e / (v + eps))
+        # Stanley: delta (ángulo de dirección) = heading_error + atan(k * e / (v + eps))
         v = min(self.max_speed, 0.15 + 0.3 * (1.0 - abs(heading_error)))
         eps = 0.01
         delta = heading_error + math.atan2(self.k_stanley * cross, v + eps)
         delta = max(-self.max_steer, min(self.max_steer, delta))
 
-        # Bicycle: omega = v * tan(delta) / L
-        if self.wheelbase < 1e-6:
-            omega = 0.0
-        else:
-            omega = v * math.tan(delta) / self.wheelbase
-        omega = max(-0.8, min(0.8, omega))
-
+        # Igual que Pure Pursuit: el converter espera angular.z = steering_angle (rad), no omega
         msg = Twist()
         msg.linear.x = float(v)
-        msg.angular.z = float(omega)
+        msg.angular.z = float(delta)
         self.pub.publish(msg)
 
 

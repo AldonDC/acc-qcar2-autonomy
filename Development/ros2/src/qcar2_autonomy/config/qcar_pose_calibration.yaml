@@ -1,0 +1,6 @@
+# Calibración posición del QCar en el mapa (offset del marcador respecto a TF map->base_link).
+# Si no usas el clic en RViz, edita aquí los valores o usa "ros2 param set" + save_calibration (ver COMANDOS).
+# Valores por defecto; ajusta para que la flecha en RViz coincida con el coche en QLabs.
+pose_offset_x: -2.673
+pose_offset_y: 0.377
+pose_offset_theta: 0.22
