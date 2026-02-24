@@ -31,6 +31,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
+import urllib.request
 
 import rclpy
 from rclpy.node import Node
@@ -131,6 +132,9 @@ class QCarWebDashboard(Node):
         self.declare_parameter("qlabs_overlay_meters_per_pixel", 0.0)
         self.declare_parameter("qlabs_flip_vertical", True)
         self.declare_parameter("qlabs_flip_horizontal", False)
+        # QLabs overhead HTTP bridge (qlabs_overhead_bridge.py on port 8086)
+        self.declare_parameter("overhead_bridge_host", "localhost")
+        self.declare_parameter("overhead_bridge_port", 8086)
 
         # ── Internal state ──────────────────────────────────────────
         self._lock = threading.Lock()
@@ -208,6 +212,7 @@ class QCarWebDashboard(Node):
         self._path_pub = self.create_publisher(PathMsg, self.get_parameter("path_topic").value, 10)
         self._repub_timer = self.create_timer(1.0, self._republish)
 
+        self._bridge_url: Optional[str] = None
         self.get_logger().info("QCar Web Dashboard node ready.")
 
     # ── ROS callbacks ───────────────────────────────────────────────
@@ -324,13 +329,12 @@ class QCarWebDashboard(Node):
     def setup_qlabs(self):
         if not _QLABS_OK:
             self.get_logger().warn(
-                "qvl not importable — QLabs overhead disabled. "
-                "Expected qvl at /workspaces/isaac_ros-dev/python_resources/qvl. "
-                "sys.path searched: %s" % str(_QVL_PATHS))
+                "qvl not importable (quanser SDK absent from Isaac ROS container). "
+                "Starting HTTP bridge poller instead — run qlabs_overhead_bridge.py on the host.")
         if not self._use_qlabs or not _QLABS_OK:
-            if self._use_qlabs and not _QLABS_OK:
-                pass  # already logged above
             self._use_qlabs = False
+            # Start bridge poller as fallback
+            self._start_bridge_poller()
             return
         try:
             host = self.get_parameter("qlabs_host").value
@@ -367,6 +371,46 @@ class QCarWebDashboard(Node):
         except Exception as e:
             self.get_logger().error("QLabs setup failed: %s" % e)
             self._use_qlabs = False
+
+    def _start_bridge_poller(self):
+        """Poll the qlabs_overhead_bridge.py HTTP server for overhead frames.
+        Falls back gracefully if the bridge isn't running — the OccupancyGrid
+        fallback will still show the Cartographer map.
+        """
+        host = str(self.get_parameter("overhead_bridge_host").value)
+        port = int(self.get_parameter("overhead_bridge_port").value)
+        url  = "http://%s:%d/frame.jpg" % (host, port)
+        self._bridge_url = url
+        fps  = max(5, min(30, int(self.get_parameter("overhead_fps").value)))
+        dt   = 1.0 / fps
+
+        def _poll():
+            connected = False
+            while not self._overhead_stop and rclpy.ok():
+                try:
+                    with urllib.request.urlopen(url, timeout=0.5) as resp:
+                        raw = resp.read()
+                    arr = np.frombuffer(raw, dtype=np.uint8)
+                    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                    if img is not None:
+                        with self._lock:
+                            self._frame_overhead = img
+                        if not connected:
+                            self.get_logger().info(
+                                "[dashboard] Bridge conectado: %s" % url)
+                            connected = True
+                except Exception:
+                    if connected:
+                        self.get_logger().warn(
+                            "[dashboard] Bridge desconectado: %s" % url)
+                        connected = False
+                time.sleep(dt)
+
+        t = threading.Thread(target=_poll, daemon=True)
+        t.start()
+        self.get_logger().info(
+            "[dashboard] Overhead bridge poller iniciado → %s  "
+            "(corre qlabs_overhead_bridge.py en el host para ver la pista de QLabs)" % url)
 
     # ── Coordinate helpers ──────────────────────────────────────────
     def _world_to_pixel(self, x: float, y: float) -> Tuple[float, float]:
@@ -411,10 +455,18 @@ class QCarWebDashboard(Node):
             if occ is not None:
                 frame = occ
             else:
-                frame = _no_signal(self._img_w, self._img_h, "WAITING FOR MAP...")
-                cv2.putText(frame, "Cartographer /map not received yet",
-                            (10, self._img_h // 2 + 30),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 120, 140), 1, cv2.LINE_AA)
+                frame = _no_signal(self._img_w, self._img_h, "WAITING FOR QLABS BRIDGE...")
+                lines = [
+                    "Para ver la pista de QLabs en tiempo real ejecuta en el host:",
+                    "  cd Development/python_resources",
+                    "  python3 qlabs_overhead_bridge.py",
+                    "",
+                    "Alternativa: lanza Cartographer para recibir /map (OccupancyGrid)",
+                ]
+                for i, line in enumerate(lines):
+                    cv2.putText(frame, line,
+                                (20, self._img_h // 2 + 50 + i * 22),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.45, (120, 140, 160), 1, cv2.LINE_AA)
         else:
             # cv2.imdecode (used by QLabsFreeCamera.get_image) already returns BGR.
             # Just copy and apply optional flips — do NOT reverse channels.
