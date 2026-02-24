@@ -70,12 +70,15 @@ _bridge = CvBridge()
 
 
 def _no_signal(w: int = 640, h: int = 480, label: str = "NO SIGNAL") -> np.ndarray:
-    """Dark placeholder frame with a centred label."""
+    """Bright placeholder frame — impossible to confuse with a dark/black bug."""
     f = np.zeros((h, w, 3), dtype=np.uint8)
-    f[:] = (28, 33, 45)   # dark blue-grey — clearly different from 'black'
-    sz = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 1.0, 2)[0]
+    f[:] = (50, 40, 30)          # dark blue-ish — clearly NOT black
+    # Bright border so it's obvious the frame is rendering
+    cv2.rectangle(f, (2, 2), (w - 3, h - 3), (0, 180, 220), 2)
+    sz = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 1.2, 2)[0]
     cx, cy = (w - sz[0]) // 2, (h + sz[1]) // 2
-    cv2.putText(f, label, (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (160, 170, 190), 2, cv2.LINE_AA)
+    cv2.putText(f, label, (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 1.2,
+                (0, 220, 255), 2, cv2.LINE_AA)
     return f
 
 
@@ -654,6 +657,24 @@ class _Handler(BaseHTTPRequestHandler):
         elif self.path == "/api/telemetry":
             data = self.node.get_telemetry()
             self._json_response(data)
+        elif self.path == "/api/debug":
+            n = self.node
+            with n._lock:
+                has_overhead = n._frame_overhead is not None
+                has_occ      = n._occ_grid_img is not None
+                has_csi      = n._frame_csi is not None
+            d = {
+                "qlabs_ok": _QLABS_OK,
+                "use_qlabs": n._use_qlabs,
+                "bridge_url": n._bridge_url,
+                "has_overhead": has_overhead,
+                "has_occ_grid": has_occ,
+                "has_csi": has_csi,
+                "img_w": n._img_w,
+                "img_h": n._img_h,
+                "mpp": n._mpp,
+            }
+            self._json_response(d)
         else:
             self.send_error(404)
 
@@ -737,6 +758,10 @@ class _Handler(BaseHTTPRequestHandler):
                 frame = self.node.get_overhead_frame()
             else:
                 frame = self.node.get_camera_frame(cam)
+            if frame is None or frame.size == 0:
+                frame = _no_signal(label="FRAME ERROR: None")
+            if frame.dtype != np.uint8:
+                frame = frame.astype(np.uint8)
             _, jpg = cv2.imencode(".jpg", frame,
                                   [cv2.IMWRITE_JPEG_QUALITY, self.node._jpeg_quality])
             data = jpg.tobytes()
@@ -747,8 +772,21 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(data)
-        except Exception:
-            self.send_error(500)
+        except Exception as e:
+            self.node.get_logger().error("[frame/%s] %s" % (cam, e))
+            # Return an error frame instead of 500 so the canvas always renders
+            try:
+                err = _no_signal(640, 480, "ERROR: %s" % str(e)[:40])
+                _, jpg = cv2.imencode(".jpg", err)
+                data = jpg.tobytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "image/jpeg")
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(data)
+            except Exception:
+                self.send_error(500)
 
     def log_message(self, fmt, *args):
         pass  # suppress per-request logs
@@ -991,14 +1029,17 @@ let mapNatW = 1280, mapNatH = 720;
 
 /* Poll overhead frames onto canvas */
 let mapBusy = false;
+let mapErrors = 0;
 function pollMap() {
   if (mapBusy) return;
   mapBusy = true;
   const img = new Image();
   img.onload = function() {
+    mapErrors = 0;
     mapNatW = img.naturalWidth;
     mapNatH = img.naturalHeight;
     const rect = mapC.getBoundingClientRect();
+    if (rect.width < 10 || rect.height < 10) { mapBusy = false; return; }
     const dpr  = window.devicePixelRatio || 1;
     canvas.width  = rect.width  * dpr;
     canvas.height = rect.height * dpr;
@@ -1015,10 +1056,34 @@ function pollMap() {
     ctx2d.drawImage(img, ox, oy, dw, dh);
     mapBusy = false;
   };
-  img.onerror = function() { mapBusy = false; };
+  img.onerror = function() {
+    mapBusy = false;
+    mapErrors++;
+    /* After 5 consecutive errors, draw error message on canvas */
+    if (mapErrors > 5) {
+      const rect = mapC.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      canvas.style.width = rect.width + 'px';
+      canvas.style.height = rect.height + 'px';
+      ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx2d.fillStyle = '#1a2030';
+      ctx2d.fillRect(0, 0, rect.width, rect.height);
+      ctx2d.strokeStyle = '#ff006e';
+      ctx2d.lineWidth = 2;
+      ctx2d.strokeRect(4, 4, rect.width-8, rect.height-8);
+      ctx2d.fillStyle = '#ff006e';
+      ctx2d.font = '16px monospace';
+      ctx2d.fillText('ERROR: /frame/overhead not responding', 20, rect.height/2 - 10);
+      ctx2d.fillStyle = '#8899aa';
+      ctx2d.font = '13px monospace';
+      ctx2d.fillText('Check: colcon build + source install/setup.bash + restart node', 20, rect.height/2 + 20);
+    }
+  };
   img.src = '/frame/overhead?t=' + Date.now();
 }
-setInterval(pollMap, 50);
+setInterval(pollMap, 100);
 pollMap();
 
 /* Click on canvas → add waypoint */
@@ -1141,7 +1206,7 @@ function checkStreams() {
   const color = document.querySelector('img[alt="Color"]');
   document.getElementById('ind-csi').className  = (csi   && csi.naturalWidth   > 0) ? 'ind ok' : 'ind';
   document.getElementById('ind-rgbd').className = (color && color.naturalWidth > 0) ? 'ind ok' : 'ind';
-  document.getElementById('ind-qlabs').className= (mapNatW > 0) ? 'ind ok' : 'ind warn';
+  document.getElementById('ind-qlabs').className= (mapNatW > 0 && mapErrors === 0) ? 'ind ok' : 'ind err';
 }
 
 /* ── Start ──────────────────────────── */
