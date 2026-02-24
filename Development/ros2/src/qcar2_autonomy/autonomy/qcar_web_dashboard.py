@@ -34,19 +34,37 @@ import numpy as np
 
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
 from cv_bridge import CvBridge
 from geometry_msgs.msg import PoseStamped, Twist
-from nav_msgs.msg import Path as PathMsg
+from nav_msgs.msg import Path as PathMsg, OccupancyGrid
 from sensor_msgs.msg import Image as ImageMsg
 
-# QLabs overhead (optional — only available inside the Quanser container)
+# QLabs overhead (optional — only available when qvl is on PYTHONPATH)
 _QLABS_OK = False
 try:
     from qvl.qlabs import QuanserInteractiveLabs
     from qvl.free_camera import QLabsFreeCamera
     _QLABS_OK = True
 except ImportError:
-    pass
+    # Try common Quanser install locations inside the Isaac ROS container
+    import sys as _sys
+    _QVL_PATHS = [
+        "/usr/local/lib/python3/dist-packages",
+        "/opt/quanser/python",
+        "/home/qcar2_scripts/python",
+        "/workspaces/isaac_ros-dev/../docker/development_docker/quanser_dev_docker_files/0_libraries/python",
+    ]
+    for _p in _QVL_PATHS:
+        import os as _os
+        if _os.path.isdir(_os.path.join(_p, "qvl")) and _p not in _sys.path:
+            _sys.path.insert(0, _p)
+    try:
+        from qvl.qlabs import QuanserInteractiveLabs
+        from qvl.free_camera import QLabsFreeCamera
+        _QLABS_OK = True
+    except ImportError:
+        pass
 
 # ═══════════════════════════════════════════════════════════════════
 #  Helpers
@@ -58,10 +76,10 @@ _bridge = CvBridge()
 def _no_signal(w: int = 640, h: int = 480, label: str = "NO SIGNAL") -> np.ndarray:
     """Dark placeholder frame with a centred label."""
     f = np.zeros((h, w, 3), dtype=np.uint8)
-    f[:] = (18, 18, 26)
+    f[:] = (28, 33, 45)   # dark blue-grey — clearly different from 'black'
     sz = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 1.0, 2)[0]
     cx, cy = (w - sz[0]) // 2, (h + sz[1]) // 2
-    cv2.putText(f, label, (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (60, 60, 80), 2, cv2.LINE_AA)
+    cv2.putText(f, label, (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (160, 170, 190), 2, cv2.LINE_AA)
     return f
 
 
@@ -127,6 +145,9 @@ class QCarWebDashboard(Node):
         self._frame_overhead: Optional[np.ndarray] = None
         self._overhead_stop = False
 
+        # OccupancyGrid fallback (used when QLabs overhead is unavailable)
+        self._occ_grid_img: Optional[np.ndarray] = None
+
         self._pose: Optional[Tuple[float, float, float]] = None
         self._vel_history: deque = deque(maxlen=300)
         self._path_points: List[Tuple[float, float]] = []
@@ -178,6 +199,16 @@ class QCarWebDashboard(Node):
         self._sub_depth = self.create_subscription(
             ImageMsg, self.get_parameter("depth_topic").value, self._on_depth, 5)
 
+        # Subscribe to /map (Cartographer OccupancyGrid) — transient local so we
+        # receive the last published map even if we subscribe after it was sent.
+        _map_qos = QoSProfile(
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        self._sub_map = self.create_subscription(
+            OccupancyGrid, "/map", self._on_map, _map_qos)
+
         # Publisher for waypoints path
         self._path_pub = self.create_publisher(PathMsg, self.get_parameter("path_topic").value, 10)
         self._repub_timer = self.create_timer(1.0, self._republish)
@@ -225,6 +256,56 @@ class QCarWebDashboard(Node):
                 self._frame_depth_raw = frame
         except Exception:
             pass
+
+    def _on_map(self, msg: OccupancyGrid):
+        """Render OccupancyGrid to a BGR canvas, used when QLabs overhead is unavailable."""
+        try:
+            info = msg.info
+            res  = float(info.resolution)
+            w_c  = int(info.width)
+            h_c  = int(info.height)
+            ox   = float(info.origin.position.x)
+            oy   = float(info.origin.position.y)
+
+            if w_c == 0 or h_c == 0 or res <= 0:
+                return
+
+            # ── Build colour image from OG values ──────────────────────
+            data = np.array(msg.data, dtype=np.int8).reshape(h_c, w_c)
+            img  = np.full((h_c, w_c, 3), (40, 44, 52), dtype=np.uint8)   # unknown = dark
+            img[data == 0]  = (210, 210, 215)   # free space = light
+            img[data > 0]   = (30,  25,  20)    # occupied   = very dark
+
+            # ROS OccupancyGrid row 0 = south (+Y), flip to match screen coords
+            img = img[::-1, :, :].copy()
+
+            # ── Resize to canvas dimensions ─────────────────────────────
+            canvas_img = cv2.resize(img, (self._img_w, self._img_h),
+                                    interpolation=cv2.INTER_NEAREST)
+
+            # ── Update coordinate system for overlays ───────────────────
+            # mpp: how many world-meters per canvas pixel
+            mpp_x = (w_c * res) / self._img_w
+            mpp_y = (h_c * res) / self._img_h
+            new_mpp = max(mpp_x, mpp_y)
+            new_cx  = ox + w_c * res / 2.0
+            new_cy  = oy + h_c * res / 2.0
+
+            with self._lock:
+                if self._frame_overhead is None:   # don't override when QLabs active
+                    self._mpp        = new_mpp
+                    self._overlay_cx = new_cx
+                    self._overlay_cy = new_cy
+
+            with self._lock:
+                self._occ_grid_img = canvas_img
+
+            self.get_logger().info(
+                "[dashboard] /map rendered: %dx%d cells  res=%.3f  mpp=%.4f" %
+                (w_c, h_c, res, new_mpp)
+            )
+        except Exception as e:
+            self.get_logger().warn("[dashboard] _on_map error: %s" % e)
 
     # ── Republish waypoints ─────────────────────────────────────────
     def _republish(self):
@@ -324,7 +405,16 @@ class QCarWebDashboard(Node):
             path = list(self._path_points)
 
         if raw is None:
-            frame = _no_signal(self._img_w, self._img_h, "OVERHEAD — WAITING")
+            # ── Fallback: use Cartographer OccupancyGrid if available ─
+            with self._lock:
+                occ = self._occ_grid_img.copy() if self._occ_grid_img is not None else None
+            if occ is not None:
+                frame = occ
+            else:
+                frame = _no_signal(self._img_w, self._img_h, "WAITING FOR MAP...")
+                cv2.putText(frame, "Cartographer /map not received yet",
+                            (10, self._img_h // 2 + 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 120, 140), 1, cv2.LINE_AA)
         else:
             # BGR conversion (QLabs gives RGB)
             if raw.ndim == 3 and raw.shape[2] == 3:
