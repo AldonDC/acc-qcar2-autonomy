@@ -40,31 +40,26 @@ from geometry_msgs.msg import PoseStamped, Twist
 from nav_msgs.msg import Path as PathMsg, OccupancyGrid
 from sensor_msgs.msg import Image as ImageMsg
 
-# QLabs overhead (optional — only available when qvl is on PYTHONPATH)
+# QLabs overhead (optional — qvl is copied into python_resources so it's
+# always reachable at /workspaces/isaac_ros-dev/python_resources inside the
+# Isaac ROS container where Development/ is mounted as isaac_ros-dev/).
+import sys as _sys, os as _os
 _QLABS_OK = False
+_QVL_PATHS = [
+    "/workspaces/isaac_ros-dev/python_resources",   # ← primary: always mounted
+    "/usr/local/lib/python3/dist-packages",
+    "/opt/quanser/python",
+    "/home/qcar2_scripts/python",
+]
+for _p in _QVL_PATHS:
+    if _os.path.isdir(_os.path.join(_p, "qvl")) and _p not in _sys.path:
+        _sys.path.insert(0, _p)
 try:
     from qvl.qlabs import QuanserInteractiveLabs
     from qvl.free_camera import QLabsFreeCamera
     _QLABS_OK = True
 except ImportError:
-    # Try common Quanser install locations inside the Isaac ROS container
-    import sys as _sys
-    _QVL_PATHS = [
-        "/usr/local/lib/python3/dist-packages",
-        "/opt/quanser/python",
-        "/home/qcar2_scripts/python",
-        "/workspaces/isaac_ros-dev/../docker/development_docker/quanser_dev_docker_files/0_libraries/python",
-    ]
-    for _p in _QVL_PATHS:
-        import os as _os
-        if _os.path.isdir(_os.path.join(_p, "qvl")) and _p not in _sys.path:
-            _sys.path.insert(0, _p)
-    try:
-        from qvl.qlabs import QuanserInteractiveLabs
-        from qvl.free_camera import QLabsFreeCamera
-        _QLABS_OK = True
-    except ImportError:
-        pass
+    pass
 
 # ═══════════════════════════════════════════════════════════════════
 #  Helpers
@@ -327,9 +322,14 @@ class QCarWebDashboard(Node):
 
     # ── QLabs overhead ──────────────────────────────────────────────
     def setup_qlabs(self):
+        if not _QLABS_OK:
+            self.get_logger().warn(
+                "qvl not importable — QLabs overhead disabled. "
+                "Expected qvl at /workspaces/isaac_ros-dev/python_resources/qvl. "
+                "sys.path searched: %s" % str(_QVL_PATHS))
         if not self._use_qlabs or not _QLABS_OK:
-            if self._use_qlabs:
-                self.get_logger().warn("qvl not available — overhead will show placeholder.")
+            if self._use_qlabs and not _QLABS_OK:
+                pass  # already logged above
             self._use_qlabs = False
             return
         try:
@@ -416,12 +416,9 @@ class QCarWebDashboard(Node):
                             (10, self._img_h // 2 + 30),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 120, 140), 1, cv2.LINE_AA)
         else:
-            # BGR conversion (QLabs gives RGB)
-            if raw.ndim == 3 and raw.shape[2] == 3:
-                frame = raw[:, :, ::-1].copy()
-            else:
-                frame = raw.copy()
-            # Flip
+            # cv2.imdecode (used by QLabsFreeCamera.get_image) already returns BGR.
+            # Just copy and apply optional flips — do NOT reverse channels.
+            frame = raw.copy()
             if self._flip_v:
                 frame = frame[::-1, :].copy()
             if self._flip_h:
