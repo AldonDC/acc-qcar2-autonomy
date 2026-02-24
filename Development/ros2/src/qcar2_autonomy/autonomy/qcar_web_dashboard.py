@@ -398,6 +398,21 @@ class QCarWebDashboard(Node):
         cv2.putText(frame, badge, (10, frame.shape[0] - 12),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 190, 255), 1, cv2.LINE_AA)
 
+        # Ensure output is a contiguous uint8 BGR image — defend against
+        # unexpected dtypes (float32, uint16) or channel orders.
+        try:
+            if frame.ndim == 2:
+                frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+            if frame.dtype != np.uint8:
+                fmin, fmax = frame.min(), frame.max()
+                if fmax <= 1.0:
+                    frame = (np.clip(frame, 0.0, 1.0) * 255.0).astype(np.uint8)
+                else:
+                    frame = cv2.normalize(frame, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+            frame = np.ascontiguousarray(frame)
+        except Exception:
+            frame = _no_signal(self._img_w, self._img_h, "OVERHEAD — ERROR")
+
         return frame
 
     def get_camera_frame(self, name: str) -> np.ndarray:
@@ -412,8 +427,19 @@ class QCarWebDashboard(Node):
                 f = None
 
         if name == "depth":
-            return _colorize_depth(f) if f is not None else _no_signal(640, 480, "DEPTH — NO SIGNAL")
-        return f.copy() if f is not None else _no_signal(640, 480, "%s — NO SIGNAL" % name.upper())
+            frm = _colorize_depth(f) if f is not None else _no_signal(640, 480, "DEPTH — NO SIGNAL")
+        else:
+            frm = f.copy() if f is not None else _no_signal(640, 480, "%s — NO SIGNAL" % name.upper())
+
+        # Defensive: ensure uint8 BGR contiguous image
+        try:
+            if frm.ndim == 2:
+                frm = cv2.cvtColor(frm, cv2.COLOR_GRAY2BGR)
+            if frm.dtype != np.uint8:
+                frm = cv2.normalize(frm, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+            return np.ascontiguousarray(frm)
+        except Exception:
+            return _no_signal(640, 480, "%s — ERR" % name.upper())
 
     # ── Waypoint management ─────────────────────────────────────────
     def add_waypoint_display(self, dx: float, dy: float) -> dict:
@@ -580,8 +606,14 @@ class _Handler(BaseHTTPRequestHandler):
                     frame = self.node.get_overhead_frame()
                 else:
                     frame = self.node.get_camera_frame(cam)
-                _, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, q])
-                data = jpg.tobytes()
+                # Defensive encoding: if imencode fails, replace with placeholder
+                try:
+                    _, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, q])
+                    data = jpg.tobytes()
+                except Exception:
+                    pf = _no_signal(640, 480, "ENCODE ERR")
+                    _, jpg = cv2.imencode(".jpg", pf, [cv2.IMWRITE_JPEG_QUALITY, q])
+                    data = jpg.tobytes()
                 self.wfile.write(b"--frame\r\n")
                 self.wfile.write(b"Content-Type: image/jpeg\r\n")
                 self.wfile.write(("Content-Length: %d\r\n\r\n" % len(data)).encode())
